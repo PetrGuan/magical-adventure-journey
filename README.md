@@ -77,12 +77,26 @@ magical-adventure-journey/
 - [x] 文案：5 张目的地动图 prompt
 - [x] 设计：3D 场景蓝图
 - [x] 设计：TTS 配音生成指南
-- [ ] 工程：Three.js 引擎搭建
-- [ ] 工程：营地建模 + 6 位 NPC 接入
-- [ ] 工程：5 张视频画框接入
+- [x] **Phase 1**：Three.js 基础引擎（占位营地，可走动可看四周）
+- [ ] **Phase 2**：替换占位为真实 Sketchfab GLB 模型
+- [ ] **Phase 3**：6 位 NPC 接入（点击播放音频 + 字幕）
+- [ ] **Phase 4**：5 张视频画框接入（VideoTexture）
 - [ ] 资产：你生成 6 个 mp3（运行 `design/tts-voice-guide.md` 中命令）
 - [ ] 资产：你生成 5 个 mp4（即梦/可灵）
 - [ ] 资产：从 Sketchfab 下载约 15 个 GLB 模型
+
+## 如何运行（Phase 1）
+
+**macOS：** 双击 `start.command`
+**Windows：** 双击 `start.bat`
+
+脚本会启动一个本地 HTTP 服务器（占用端口 8000），并自动打开浏览器。
+建议 Chrome 或 Edge，按 F11 全屏体验。
+
+⚠️ **macOS 首次运行**可能提示"无法打开"——
+右键 `start.command` → 打开 → 在弹窗确认即可（之后双击就能用）。
+
+⚠️ **依赖**：Python 3（macOS / Win 11 自带；如果没有，去 [python.org](https://www.python.org/downloads/) 下载）。
 
 ## 协议
 

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>神奇的探险之旅</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700&family=Noto+Serif+SC:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="src/ui/styles.css">
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+
+    <!-- 加载页 / 进入界面 -->
+    <div id="loading-screen" class="screen">
+      <div class="title-block">
+        <h1 class="title">神奇的探险之旅</h1>
+        <p class="subtitle">一次真正的冒险，从这里开始</p>
+      </div>
+
+      <div class="progress-container">
+        <div class="progress-bar"><div class="progress-fill"></div></div>
+        <div class="progress-text">正在加载……</div>
+      </div>
+
+      <button id="enter-button" class="enter-button" disabled>进入营地</button>
+
+      <div class="footer-hint">
+        建议使用 Chrome / Edge 浏览器，全屏体验更佳（按 F11）
+      </div>
+    </div>
+
+    <!-- 3D 画布 -->
+    <canvas id="canvas"></canvas>
+
+    <!-- HUD（玩家进入后显示） -->
+    <div id="hud" class="hud hidden">
+      <div class="hud-hint">
+        <span class="hud-key">🖱️ 拖动</span> 转视角 &nbsp;·&nbsp;
+        <span class="hud-key">⌨️ WASD</span> 移动 &nbsp;·&nbsp;
+        <span class="hud-key">点击</span> 发光物互动
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
