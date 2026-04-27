@@ -1,258 +1,282 @@
 import * as THREE from 'three';
 
 /**
- * Phase 1-2 占位营地：用基础几何体勾勒出大本营的雏形。
- * Phase 3 会用 Sketchfab GLB 模型替换。
- *
- * 布局参考：content/scenes/00-base-camp.md
- *
- * @returns {{ npcs, frames }} 可交互对象的引用
- *   - npcs: [{ body, head, halo, character }]
- *   - frames: [{ outer, inner, destination }]
+ * 全景大本营场景。
+ * 学生站在球心，背景是 360° 全景图（来自 AI 生成的真实感图像）。
+ * 6 个 NPC sprite + 5 个目的地画框漂浮在球内空间。
+ * 学生只能转视角，不能移动。
  */
-export function buildPlaceholderCamp(scene, characters, destinations) {
-  // ====== 天空 + 雾 ======
-  scene.background = new THREE.Color(0xfdc080);
-  scene.fog = new THREE.Fog(0xfdc080, 25, 80);
 
-  // ====== 灯光 ======
-  scene.add(new THREE.HemisphereLight(0xffaa66, 0x4a3322, 0.7));
+const PANORAMA_URL = 'assets/skybox/base-camp.jpg';
 
-  const sun = new THREE.DirectionalLight(0xffcc88, 1.1);
-  sun.position.set(8, 12, 6);
-  scene.add(sun);
-
-  // ====== 地面 ======
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(80, 80, 16, 16),
-    new THREE.MeshStandardMaterial({ color: 0x4a6b3e, roughness: 0.95 })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  scene.add(ground);
-
-  // ====== 帐篷 ======
-  const tentMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3a });
-  for (const x of [-3.5, 3.5]) {
-    const tent = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.4, 4), tentMat);
-    tent.position.set(x, 1.2, -3);
-    tent.rotation.y = Math.PI / 4;
-    scene.add(tent);
-  }
-
-  // ====== 篝火 ======
-  const firePit = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.7, 0.8, 0.2, 12),
-    new THREE.MeshStandardMaterial({ color: 0x2a1a0a })
-  );
-  firePit.position.set(0, 0.1, -4);
-  scene.add(firePit);
-
-  const fire = new THREE.Mesh(
-    new THREE.ConeGeometry(0.5, 1.0, 8),
-    new THREE.MeshBasicMaterial({ color: 0xff5511 })
-  );
-  fire.position.set(0, 0.8, -4);
-  scene.add(fire);
-
-  const fireLight = new THREE.PointLight(0xff7733, 2.5, 12, 1.5);
-  fireLight.position.set(0, 1.5, -4);
-  scene.add(fireLight);
-
-  scene.userData.fire = fire;
-  scene.userData.fireLight = fireLight;
-
-  // ====== 装备桌 ======
-  const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.8 });
-  const tableTop = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 1.4), wood);
-  tableTop.position.set(0, 1, 1.5);
-  scene.add(tableTop);
-  for (const [x, z] of [[-1.5, 0.9], [1.5, 0.9], [-1.5, 2.1], [1.5, 2.1]]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1, 0.1), wood);
-    leg.position.set(x, 0.5, z);
-    scene.add(leg);
-  }
-
-  const eqColors = [0xc0b08a, 0xb0782a, 0x444444, 0x6688aa, 0xaa3322, 0xffffff];
-  for (let i = 0; i < 6; i++) {
-    const eq = new THREE.Mesh(
-      i % 2 === 0
-        ? new THREE.BoxGeometry(0.25, 0.15, 0.2)
-        : new THREE.CylinderGeometry(0.12, 0.12, 0.2, 8),
-      new THREE.MeshStandardMaterial({ color: eqColors[i] })
+async function loadPanorama(url) {
+  return new Promise((resolve) => {
+    new THREE.TextureLoader().load(
+      url,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        resolve(tex);
+      },
+      undefined,
+      (err) => {
+        console.warn(`[Panorama] 加载失败 ${url}:`, err);
+        resolve(null);
+      }
     );
-    eq.position.set(-1.2 + i * 0.5, 1.13, 1.5);
-    scene.add(eq);
+  });
+}
+
+/**
+ * @returns {{ npcs, frames }}
+ */
+export async function buildPlaceholderCamp(scene, characters, destinations) {
+  // ====== 全景背景 ======
+  const panoTex = await loadPanorama(PANORAMA_URL);
+  if (panoTex) {
+    scene.background = panoTex;
+    scene.environment = panoTex;
+  } else {
+    scene.background = new THREE.Color(0xfdc080);
   }
 
-  // ====== 6 位 NPC ======
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xe8c8a0 });
+  // ====== 灯光（sprite 基本不需要，但保留一点环境氛围）======
+  scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+
+  // ====== 顶部标题牌 ======
+  const titleSprite = makeTitleSprite('探险大本营');
+  titleSprite.position.set(0, 6, -8);
+  titleSprite.scale.set(8, 1.6, 1);
+  scene.add(titleSprite);
+
+  // ====== 5 张目的地画框（学生正前方一面"墙"）======
+  const frames = [];
+  destinations.forEach((destination, i) => {
+    const x = -7 + i * 3.5;
+    const y = 2.6;
+    const z = -10;
+
+    const sprite = makeFrameSprite(destination);
+    sprite.position.set(x, y, z);
+    sprite.scale.set(2.6, 2.0, 1);
+    scene.add(sprite);
+
+    frames.push({ sprite, inner: sprite, outer: sprite, destination });
+  });
+
+  // ====== 6 位 NPC（左右两侧半圆排开）======
   const npcs = [];
   characters.forEach((character, i) => {
     const isLeft = i < 3;
-    const x = isLeft ? -4.5 : 4.5;
-    const z = -6 + (i % 3) * 2;
+    const localIdx = i % 3;
+    const angleOffset = isLeft ? -1 : 1;
+    // 半圆：A 列在左 -90°~-30°，B 列在右 +30°~+90°
+    const angle = angleOffset * (Math.PI / 6 + (localIdx / 2) * (Math.PI / 3));
+    const r = 6;
+    const x = Math.sin(angle) * r;
+    const z = -Math.cos(angle) * r;
 
-    // 身体（独立 material 实例，方便单独高亮）
-    const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.32, 0.36, 1.4, 10),
-      new THREE.MeshStandardMaterial({ color: character.color })
-    );
-    body.position.set(x, 0.7, z);
-    scene.add(body);
+    const sprite = makeNPCSprite(character);
+    sprite.position.set(x, 1.6, z);
+    sprite.scale.set(1.5, 1.8, 1);
 
-    // 头（独立 material 实例，肤色）
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.28, 16, 12),
-      skinMat.clone()
-    );
-    head.position.set(x, 1.65, z);
-    scene.add(head);
-
-    // 头顶光环（点击时显示）
-    const halo = new THREE.Mesh(
-      new THREE.RingGeometry(0.32, 0.42, 24),
-      new THREE.MeshBasicMaterial({
-        color: 0xffd89a,
-        transparent: true,
-        opacity: 0.85,
-        side: THREE.DoubleSide,
-        fog: false,
-      })
-    );
-    halo.position.set(x, 2.1, z);
-    halo.rotation.x = -Math.PI / 2;
+    const halo = makeHaloSprite();
+    halo.position.set(x, 2.7, z);
+    halo.scale.set(1.0, 1.0, 1);
     halo.visible = false;
+
+    scene.add(sprite);
     scene.add(halo);
 
-    npcs.push({ body, head, halo, character });
+    npcs.push({
+      sprite,
+      halo,
+      character,
+      // 兼容现有 main.js 的 hover/click 逻辑（用 sprite 当 body+head）
+      body: sprite,
+      head: sprite,
+    });
   });
-
-  // ====== 5 张视频画框 + 北墙 ======
-  const wall = new THREE.Mesh(
-    new THREE.BoxGeometry(20, 4.5, 0.25),
-    new THREE.MeshStandardMaterial({ color: 0x5a3e22, roughness: 0.85 })
-  );
-  wall.position.set(0, 2.25, -11);
-  scene.add(wall);
-
-  const frames = [];
-  destinations.forEach((destination, i) => {
-    // 外框（米黄色木框）
-    const outer = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.6, 1.6),
-      new THREE.MeshStandardMaterial({ color: 0xc4a878, emissive: 0x2a1a08 })
-    );
-    outer.position.set(-7.5 + i * 3.75, 2.4, -10.85);
-    scene.add(outer);
-
-    // 内画（占位颜色 + 文字）
-    const inner = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.3, 1.3),
-      new THREE.MeshStandardMaterial({
-        map: makeFrameLabel(destination),
-        emissive: 0x000000,
-      })
-    );
-    inner.position.set(-7.5 + i * 3.75, 2.4, -10.84);
-    scene.add(inner);
-
-    frames.push({ outer, inner, destination });
-  });
-
-  // ====== 周围松树点缀 ======
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2a18 });
-  const treeMat  = new THREE.MeshStandardMaterial({ color: 0x2a4a1a });
-  for (let i = 0; i < 12; i++) {
-    const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.2;
-    const r = 15 + Math.random() * 4;
-    const tx = Math.cos(angle) * r;
-    const tz = Math.sin(angle) * r;
-
-    const trunk = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.28, 1.4, 6),
-      trunkMat
-    );
-    trunk.position.set(tx, 0.7, tz);
-    scene.add(trunk);
-
-    const top = new THREE.Mesh(
-      new THREE.ConeGeometry(0.9 + Math.random() * 0.3, 2.6 + Math.random() * 0.6, 6),
-      treeMat
-    );
-    top.position.set(tx, 2.9, tz);
-    scene.add(top);
-  }
-
-  // ====== 远山轮廓 ======
-  const mountainMat = new THREE.MeshBasicMaterial({ color: 0x3a2a3a, fog: false });
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * Math.PI * 2;
-    const mountain = new THREE.Mesh(
-      new THREE.ConeGeometry(8, 6 + Math.random() * 3, 4),
-      mountainMat
-    );
-    mountain.position.set(Math.cos(angle) * 50, 3, Math.sin(angle) * 50);
-    scene.add(mountain);
-  }
 
   return { npcs, frames };
 }
 
-/** 用 CanvasTexture 给画框生成「emoji + 名字」标签作为占位 */
-function makeFrameLabel(destination) {
+/** 创建 NPC 圆形头像 sprite（含名字标签）*/
+function makeNPCSprite(character) {
   const canvas = document.createElement('canvas');
-  canvas.width = 460;
-  canvas.height = 260;
+  canvas.width = 256;
+  canvas.height = 320;
   const ctx = canvas.getContext('2d');
 
-  // 背景色 = destination.color
+  const cx = 128, cy = 128, radius = 100;
+
+  // 外圈光晕
+  const grad = ctx.createRadialGradient(cx, cy, radius * 0.4, cx, cy, radius);
+  const colorHex = '#' + character.color.toString(16).padStart(6, '0');
+  grad.addColorStop(0, lightenColor(colorHex, 0.4));
+  grad.addColorStop(1, colorHex);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 金色描边
+  ctx.strokeStyle = '#ffd89a';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius - 3, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 圆心：名字第一个字
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 96px "Noto Serif SC", "PingFang SC", serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+  ctx.shadowBlur = 8;
+  ctx.fillText(character.name.charAt(0), cx, cy + 8);
+
+  // 圆下方：完整名字
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 30px "Noto Sans SC", sans-serif';
+  ctx.fillText(character.name, cx, 268);
+
+  // 角色身份小字
+  ctx.font = '500 18px "Noto Sans SC", sans-serif';
+  ctx.fillStyle = '#ffd89a';
+  ctx.fillText(character.role, cx, 300);
+
+  return makeSpriteFromCanvas(canvas);
+}
+
+/** 目的地画框 sprite */
+function makeFrameSprite(destination) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 384;
+  canvas.height = 296;
+  const ctx = canvas.getContext('2d');
+
+  // 主体彩色背景
   ctx.fillStyle = '#' + destination.color.toString(16).padStart(6, '0');
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // 半透明深色覆盖让文字更清晰
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+  // 暗化覆盖让文字更清晰
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // 大 emoji
-  ctx.font = '120px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+  // 木框描边
+  ctx.strokeStyle = '#c4a878';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
+
+  // Emoji
+  ctx.font = '140px "Apple Color Emoji", "Segoe UI Emoji"';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(destination.emoji, canvas.width / 2, canvas.height / 2 - 20);
+  ctx.fillText(destination.emoji, canvas.width / 2, canvas.height / 2 - 25);
 
-  // 名称
+  // 地名
   ctx.fillStyle = '#ffffff';
-  ctx.font = '700 36px "Noto Serif SC", "PingFang SC", serif';
-  ctx.fillText(destination.name, canvas.width / 2, canvas.height / 2 + 80);
+  ctx.font = '700 38px "Noto Serif SC", "PingFang SC", serif';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+  ctx.shadowBlur = 6;
+  ctx.fillText(destination.name, canvas.width / 2, canvas.height - 50);
 
+  return makeSpriteFromCanvas(canvas);
+}
+
+/** 顶部标题（金色横匾感）*/
+function makeTitleSprite(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 200;
+  const ctx = canvas.getContext('2d');
+
+  // 木质横匾背景
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, '#3a2818');
+  grad.addColorStop(0.5, '#5a3e22');
+  grad.addColorStop(1, '#3a2818');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 金边
+  ctx.strokeStyle = '#c4a878';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+  ctx.strokeStyle = '#ffd89a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+
+  // 标题文字
+  ctx.fillStyle = '#ffd89a';
+  ctx.font = '900 100px "Noto Serif SC", "PingFang SC", serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(255, 200, 100, 0.5)';
+  ctx.shadowBlur = 16;
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 8);
+
+  return makeSpriteFromCanvas(canvas);
+}
+
+/** 头顶光环（点击 NPC 时显示）*/
+function makeHaloSprite() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  // 径向渐变金光
+  const grad = ctx.createRadialGradient(128, 128, 70, 128, 128, 120);
+  grad.addColorStop(0, 'rgba(255, 220, 150, 0)');
+  grad.addColorStop(0.5, 'rgba(255, 220, 150, 0.9)');
+  grad.addColorStop(1, 'rgba(255, 200, 100, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+
+  return makeSpriteFromCanvas(canvas);
+}
+
+/** 通用 canvas → Sprite */
+function makeSpriteFromCanvas(canvas) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    fog: false,
+    depthWrite: false,
+  });
+  return new THREE.Sprite(material);
+}
+
+/** 颜色变亮（用于 NPC 头像渐变高光）*/
+function lightenColor(hex, amount) {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, ((num >> 16) & 0xff) + Math.floor(255 * amount));
+  const g = Math.min(255, ((num >> 8) & 0xff) + Math.floor(255 * amount));
+  const b = Math.min(255, (num & 0xff) + Math.floor(255 * amount));
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
 }
 
 /** 每帧动画 */
 export function updatePlaceholderCamp(scene, delta, elapsed) {
-  // 篝火光跳动
-  const fireLight = scene.userData.fireLight;
-  if (fireLight) {
-    fireLight.intensity = 2.5 + Math.sin(elapsed * 9) * 0.5 + (Math.random() - 0.5) * 0.4;
-  }
-
-  // 火苗轻微缩放
-  const fire = scene.userData.fire;
-  if (fire) {
-    fire.scale.y = 1 + Math.sin(elapsed * 14) * 0.12;
-    fire.scale.x = 1 + Math.sin(elapsed * 11) * 0.06;
-  }
-
-  // 光环旋转
-  if (scene.userData.npcs_) { /* deprecated */ }
+  // 全景静态场景没有动态需求
 }
 
-/** 让 NPC 头顶光环旋转（只旋转可见的） */
+/** 头顶光环旋转 */
 export function spinHalos(npcs, elapsed) {
   for (const npc of npcs) {
-    if (npc.halo.visible) {
-      npc.halo.rotation.z = elapsed * 1.2;
+    if (npc.halo && npc.halo.visible) {
+      // Sprite 不能直接 rotate（永远面向相机），但可以缩放呼吸感
+      const scale = 1.0 + Math.sin(elapsed * 3) * 0.08;
+      npc.halo.scale.set(scale, scale, 1);
     }
   }
 }
