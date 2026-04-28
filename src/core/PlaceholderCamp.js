@@ -1,13 +1,15 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /**
  * 全景大本营场景。
  * 学生站在球心，背景是 360° 全景图（来自 AI 生成的真实感图像）。
- * 6 个 NPC sprite + 5 个目的地画框漂浮在球内空间。
+ * 6 个 NPC（sprite / 视频 / 3D 模型）+ 5 个目的地画框漂浮在球内空间。
  * 学生只能转视角，不能移动。
  */
 
-const PANORAMA_URL = 'assets/skybox/base-camp.jpg';
+const PANORAMA_URL = 'assets/skybox/base-camp.webp';
+const gltfLoader = new GLTFLoader();
 
 async function loadPanorama(url) {
   return new Promise((resolve) => {
@@ -40,8 +42,13 @@ export async function buildPlaceholderCamp(scene, characters, destinations) {
     scene.background = new THREE.Color(0xfdc080);
   }
 
-  // ====== 灯光（sprite 基本不需要，但保留一点环境氛围）======
-  scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+  // ====== 灯光 ======
+  // sprite 不需要灯光，但 3D 模型（GLB）需要 PBR 灯光才能看清材质
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  // 模拟黄昏阳光，从右上方 45° 斜射，给 3D 角色做出立体感
+  const sun = new THREE.DirectionalLight(0xffd99a, 1.2);
+  sun.position.set(5, 8, 3);
+  scene.add(sun);
 
   // ====== 顶部标题牌 ======
   const titleSprite = makeTitleSprite('探险大本营');
@@ -49,54 +56,82 @@ export async function buildPlaceholderCamp(scene, characters, destinations) {
   titleSprite.scale.set(8, 1.6, 1);
   scene.add(titleSprite);
 
-  // ====== 5 张目的地画框（学生正前方一面"墙"）======
+  // 目的地不再以画框形式出现在场景里——
+  // 改为点击 NPC 后从对话框选择（见 src/ui/Subtitle.js）
   const frames = [];
-  destinations.forEach((destination, i) => {
-    const x = -7 + i * 3.5;
-    const y = 2.6;
-    const z = -10;
-
-    const sprite = makeFrameSprite(destination);
-    sprite.position.set(x, y, z);
-    sprite.scale.set(2.6, 2.0, 1);
-    scene.add(sprite);
-
-    frames.push({ sprite, inner: sprite, outer: sprite, destination });
-  });
 
   // ====== 6 位 NPC（左右两侧半圆排开）======
   const npcs = [];
-  characters.forEach((character, i) => {
+  await Promise.all(characters.map(async (character, i) => {
     const isLeft = i < 3;
     const localIdx = i % 3;
     const angleOffset = isLeft ? -1 : 1;
-    // 半圆：A 列在左 -90°~-30°，B 列在右 +30°~+90°
-    const angle = angleOffset * (Math.PI / 6 + (localIdx / 2) * (Math.PI / 3));
+    // 6 位 NPC 整体往右拨：B 列累计右移 40°，A 列累计右移 60°
+    // 原始角度：A 列 -30°/-60°/-90°，B 列 +30°/+60°/+90°
+    const SHIFT_A = Math.PI / 3;        // A 列累计右移 60°
+    const SHIFT_B = Math.PI / 9 * 2;    // B 列累计右移 40°
+    let angle = angleOffset * (Math.PI / 6 + (localIdx / 2) * (Math.PI / 3));
+    angle += isLeft ? SHIFT_A : SHIFT_B;
+
     const r = 6;
     const x = Math.sin(angle) * r;
     const z = -Math.cos(angle) * r;
 
-    const sprite = makeNPCSprite(character);
-    sprite.position.set(x, 1.6, z);
-    sprite.scale.set(1.5, 1.8, 1);
+    // ----- 视觉表现：3D 模型 / 静态画布头像 -----
+    // 注意：character.video 字段是给【对话框头像】用的（点 NPC 后才播放），
+    // 这里 3D 场景里只用静态头像 sprite——避免 6 个视频在场景里同时循环（"假"）。
+    let visualObject;
+    let mixer = null;
 
+    if (character.model) {
+      // 3D 模型 + idle 动画
+      const result = await makeNPCModel(character);
+      visualObject = result.model;
+      mixer = result.mixer;
+      visualObject.position.set(x, 0, z);
+      visualObject.lookAt(0, visualObject.position.y, 0);
+    } else {
+      visualObject = makeNPCSprite(character);
+      visualObject.position.set(x, 1.6, z);
+      visualObject.scale.set(1.5, 1.8, 1);
+    }
+    scene.add(visualObject);
+
+    // ----- 透明点击靶（统一 raycast，不管视觉是 sprite 还是 GLB 嵌套）-----
+    const clickTarget = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.7, 0.7, 1.8, 8),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    clickTarget.position.set(x, 0.9, z);
+    scene.add(clickTarget);
+
+    // ----- 头顶光环 -----
     const halo = makeHaloSprite();
-    halo.position.set(x, 2.7, z);
+    halo.position.set(x, 2.5, z);
     halo.scale.set(1.0, 1.0, 1);
     halo.visible = false;
-
-    scene.add(sprite);
     scene.add(halo);
 
-    npcs.push({
-      sprite,
+    // ----- 3D 模型角色加名字小牌（model 本身没有名字文字）-----
+    // canvas sprite 头像本身已含名字，不需要额外牌子
+    if (character.model) {
+      const namePlate = makeNamePlateSprite(character);
+      namePlate.position.set(x, 0.2, z);
+      namePlate.scale.set(1.6, 0.4, 1);
+      scene.add(namePlate);
+    }
+
+    npcs[i] = {
+      visualObject,
+      mixer,
+      clickTarget,
       halo,
       character,
-      // 兼容现有 main.js 的 hover/click 逻辑（用 sprite 当 body+head）
-      body: sprite,
-      head: sprite,
-    });
-  });
+      // 让 main.js 的 hover/click 逻辑统一指向 clickTarget
+      body: clickTarget,
+      head: clickTarget,
+    };
+  }));
 
   return { npcs, frames };
 }
@@ -147,6 +182,112 @@ function makeNPCSprite(character) {
   ctx.font = '500 18px "Noto Sans SC", sans-serif';
   ctx.fillStyle = '#ffd89a';
   ctx.fillText(character.role, cx, 300);
+
+  return makeSpriteFromCanvas(canvas);
+}
+
+/**
+ * 视频版 NPC sprite — 用 VideoTexture 替代 canvas。
+ * 视频静音循环自动播放（浏览器策略要求 muted 才能 autoplay）。
+ */
+async function makeNPCVideoSprite(character) {
+  const video = document.createElement('video');
+  video.src = character.video;
+  video.loop = true;
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.crossOrigin = 'anonymous';
+
+  // 等视频元数据 + 第一帧加载（最多等 3 秒，避免卡死场景初始化）
+  await new Promise((resolve) => {
+    if (video.readyState >= 2) return resolve();
+    video.addEventListener('loadeddata', resolve, { once: true });
+    video.addEventListener('error', resolve, { once: true });
+    setTimeout(resolve, 3000);
+  });
+
+  // 触发播放（即使等待超时也尝试）
+  video.play().catch(() => {});
+
+  const texture = new THREE.VideoTexture(video);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    fog: false,
+    depthWrite: false,
+  });
+
+  const sprite = new THREE.Sprite(material);
+  // 把 video element 挂在 sprite 上，方便后续控制（暂停/继续）
+  sprite.userData.video = video;
+  return sprite;
+}
+
+/**
+ * 3D 模型版 NPC — 加载 GLB，自动播放 idle 动画。
+ * 返回 { model, mixer }，main.js 每帧调 mixer.update(delta)。
+ */
+async function makeNPCModel(character) {
+  const gltf = await gltfLoader.loadAsync(character.model);
+  const model = gltf.scene;
+
+  // 启用阴影（如果以后加灯光阴影会用到）
+  model.traverse((node) => {
+    if (node.isMesh) {
+      node.castShadow = true;
+      node.receiveShadow = false;
+    }
+  });
+
+  let mixer = null;
+  if (gltf.animations && gltf.animations.length > 0) {
+    mixer = new THREE.AnimationMixer(model);
+    // 优先 idle，找不到就用第一个动画
+    const idleClip =
+      gltf.animations.find((c) => /idle/i.test(c.name)) ||
+      gltf.animations[0];
+    mixer.clipAction(idleClip).play();
+  }
+
+  return { model, mixer };
+}
+
+/** 视频角色下方的名字小牌（视频里看不出谁是谁）*/
+function makeNamePlateSprite(character) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 480;
+  canvas.height = 120;
+  const ctx = canvas.getContext('2d');
+
+  // 半透明深色底
+  ctx.fillStyle = 'rgba(20, 12, 8, 0.85)';
+  ctx.beginPath();
+  ctx.roundRect(0, 10, canvas.width, canvas.height - 20, 18);
+  ctx.fill();
+
+  // 金色描边
+  ctx.strokeStyle = '#c4a878';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(2, 12, canvas.width - 4, canvas.height - 24, 16);
+  ctx.stroke();
+
+  // 名字
+  ctx.fillStyle = '#ffd89a';
+  ctx.font = '700 38px "Noto Serif SC", "PingFang SC", serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(character.name, canvas.width / 2, canvas.height / 2 - 6);
+
+  // 角色身份小字
+  ctx.fillStyle = '#c4a878';
+  ctx.font = '500 18px "Noto Sans SC", sans-serif';
+  ctx.fillText(character.role, canvas.width / 2, canvas.height / 2 + 26);
 
   return makeSpriteFromCanvas(canvas);
 }

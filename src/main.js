@@ -43,44 +43,38 @@ async function init() {
     hotspotManager.registerNPC(npc.body, npc);
     hotspotManager.registerNPC(npc.head, npc);
   });
-  camp.frames.forEach(frame => {
-    hotspotManager.registerFrame(frame.inner, frame);
-  });
+  // 目的地不再以画框形式存在场景中——但保留 hotspot 系统，未来或许有新用途
+  // (camp.frames 现在恒为 [])
 
-  subtitle = new Subtitle();
+  subtitle = new Subtitle(destinations);
   videoModal = new VideoModal();
 
   subtitle.onHidden = () => {
     camp.npcs.forEach(n => { n.halo.visible = false; });
   };
 
+  // 对话框里点目的地按钮 → 播放该场景的视频
+  subtitle.onDestinationClick = (destination) => {
+    videoModal.show(destination);
+  };
+
   hotspotManager.onClick = (type, data) => {
     if (type === 'npc') onNPCClick(data);
-    else if (type === 'frame') onFrameClick(data);
   };
 
-  hotspotManager.onHover = (type, data) => {
-    camp.npcs.forEach(n => {
-      n.body.material.emissive.setHex(0x000000);
-      n.head.material.emissive.setHex(0x000000);
-    });
-    camp.frames.forEach(f => {
-      f.outer.material.emissive.setHex(0x2a1a08);
-    });
-
-    if (type === 'npc') {
-      data.body.material.emissive.setHex(0x332211);
-      data.head.material.emissive.setHex(0x221a10);
-    } else if (type === 'frame') {
-      data.outer.material.emissive.setHex(0x6a4a1a);
-    }
-  };
+  // 鼠标 hover 时鼠标已经会变 pointer，暂不做更精细高亮
+  // （sprite/视频/3D 模型混合，emissive 不通用，留待 polish 阶段）
+  hotspotManager.onHover = () => {};
 
   // ====== 帧循环 ======
   engine.onUpdate((delta, elapsed) => {
     player.update(delta);
     updatePlaceholderCamp(engine.scene, delta, elapsed);
     spinHalos(camp.npcs, elapsed);
+    // 3D 角色 idle 动画驱动
+    camp.npcs.forEach(n => {
+      if (n.mixer) n.mixer.update(delta);
+    });
   });
 
   // 渲染一帧给加载页背后

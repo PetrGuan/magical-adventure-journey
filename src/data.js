@@ -2,76 +2,69 @@
  * 项目数据：6 位角色 + 5 个目的地。
  * 内容源于 content/01-characters.md 和 content/04-destinations.md。
  *
- * 改文案在这里改即可——3D 场景代码会自动读取。
+ * 每位角色的 video 字段是其 mp4 自我介绍——视频自带语音，
+ * 点击 NPC 时在对话框头像区域播放（见 src/ui/Subtitle.js）。
  */
 
 export const characters = [
   {
     id: 'A1',
-    name: '李大山',
+    name: '王叔叔',
     role: '经验丰富的探险爱好者',
     color: 0x4a3a28,
-    audio: 'assets/audio/01-li-dashan.mp3',
-    speech: `你好。我叫李大山，42 岁，登过 6 座七千米的雪山。
-这道疤是在北极被冰棱划的。
-我话不多——你跟着我，就别担心。
-想带我一起去吗？`,
+    video: 'assets/videos/character_1.mp4',
+    speech: `大家好，我是一名探险爱好者，
+我走过无数险峰与秘境，懂野外生存，会应急避险。
+跟着我，安全和方向都交给我，你只管放心探险。`,
   },
   {
     id: 'A2',
-    name: '陈雨桐',
+    name: '陈老师',
     role: '知识渊博的生物学家',
     color: 0x9a7a4a,
-    audio: 'assets/audio/02-chen-yutong.mp3',
-    speech: `嗨！我是陈雨桐，生物学家。
-哪些蛇有毒、哪些果子能吃，我都知道。
-不过——看到没见过的虫子，我会激动得忘记赶路。
-你愿意带这样的我吗？`,
+    video: 'assets/videos/character_2.mp4',
+    speech: `大家好，我是一名生物学家，
+山林草木、鸟兽虫鱼我都熟悉，能辨别植物、识别动物踪迹，
+还能帮我们避开危险生物，一路解锁自然奥秘。`,
   },
   {
     id: 'A3',
-    name: '阿木叔',
+    name: '张大伯',
     role: '见多识广的向导',
     color: 0x8a5a3a,
-    audio: 'assets/audio/03-amushu.mp3',
-    speech: `哈哈哈，叫我阿木叔！我五十岁，从小在山林里长大。
-听声音能辨方向，看云能预报天气。
-闭着眼，我都能找回家。
-来不来？阿木叔保证不让你迷路！`,
+    video: 'assets/videos/character_3.mp4',
+    speech: `大家好，我是经验老道的向导，
+地形、路线我了如指掌，哪里有水源，哪里能避险，哪里藏着美景，
+我都一清二楚，绝不走弯路。`,
   },
   {
     id: 'B1',
     name: '小雨',
     role: '好奇心强、性格活泼的妹妹',
     color: 0xe88aa0,
-    audio: 'assets/audio/04-xiaoyu.mp3',
-    speech: `哥哥姐姐！我叫小雨，十岁！
-我跑得超快，眼睛超尖——树洞里的小松鼠都是我先发现的！
-我什么都不怕，就是爸爸说我太冲动……
-带上我嘛，拜托啦——！`,
+    video: 'assets/videos/character_4.mp4',
+    speech: `大家好呀，我是活泼好动的小妹妹，
+对一切新鲜事物都好奇满满，
+总能发现有意思的新奇小惊喜。`,
   },
   {
     id: 'B2',
-    name: '张大壮',
+    name: '小军',
     role: '胆子大但行事鲁莽的表哥',
     color: 0xc44a2a,
-    audio: 'assets/audio/05-zhang-dazhuang.mp3',
-    speech: `嘿！张大壮，14 岁，全班最高的！
-我力气大，学过武术，什么都不怕！
-我妈说我太冲动，但我超讲义气！
-让我打头阵——一起去！`,
+    video: 'assets/videos/character_5.mp4',
+    speech: `大家好啊，我是表哥，天不怕地不怕，胆子非常大，
+就是我做事容易心急冲动，往往不考虑行为后果。`,
   },
   {
     id: 'B3',
     name: '小明',
     role: '心细而胆小的同学',
     color: 0x6688bb,
-    audio: 'assets/audio/06-xiaoming.mp3',
-    speech: `你……你好。我叫小明，11 岁。
-我胆子有点小，但我观察特别仔细。
-出门前，我会把清单列三遍。
-上次同学的红领巾，是我帮她找到的。
-带上我——我会保护好大家。`,
+    video: 'assets/videos/character_6.mp4',
+    speech: `大家好啊，我是小同学，
+我心思细腻，擅长留意细小线索，
+就是胆子不大，遇到危险会忍不住忐忑紧张。`,
   },
 ];
 
