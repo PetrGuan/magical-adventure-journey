@@ -10,7 +10,10 @@ import { Subtitle } from './ui/Subtitle.js';
 import { VideoModal } from './ui/VideoModal.js';
 import { EquipmentModal } from './ui/EquipmentModal.js';
 import { DestinationPicker } from './ui/DestinationPicker.js';
+import { BGMPlayer } from './ui/BGMPlayer.js';
 import { characters, destinations, equipment } from './data.js';
+
+const BGM_URL = 'assets/audio/bgm.ogg';
 
 // ====== DOM ======
 const loadingScreen = document.getElementById('loading-screen');
@@ -21,7 +24,7 @@ const hud           = document.getElementById('hud');
 const canvas        = document.getElementById('canvas');
 
 let engine, player, camp, hotspotManager;
-let subtitle, videoModal, equipmentModal, destinationPicker;
+let subtitle, videoModal, equipmentModal, destinationPicker, bgm;
 
 async function init() {
   // ====== 启动引擎 ======
@@ -56,9 +59,11 @@ async function init() {
   videoModal        = new VideoModal();
   equipmentModal    = new EquipmentModal(equipment);
   destinationPicker = new DestinationPicker(destinations);
+  bgm               = new BGMPlayer(BGM_URL);
 
   subtitle.onHidden = () => {
     camp.npcs.forEach(n => { n.halo.visible = false; });
+    bgm.unduck();
   };
 
   // 远方树点开后选目的地 → 关 picker，弹 VideoModal 播 mp4
@@ -103,10 +108,14 @@ function onNPCClick(npc) {
     subtitle.hide();
     return;
   }
+  const wasShowing = subtitle.isVisible();
   camp.npcs.forEach(n => { n.halo.visible = false; });
   npc.halo.visible = true;
   subtitle.currentNpc = npc;
   subtitle.show(npc.character);
+  // 第一次开 NPC 卡片才 duck；从一个 NPC 切到另一个时不重复 duck，
+  // 避免 duckCount 失衡。
+  if (!wasShowing) bgm.duck();
 }
 
 function onTentClick() {
@@ -126,6 +135,8 @@ function enterCamp() {
   loadingScreen.classList.add('hidden');
   hud.classList.remove('hidden');
   engine.start();
+  // 借用户点「进入营地」这次手势启动 BGM，绕过浏览器的 autoplay 限制
+  bgm.start();
 }
 
 function sleep(ms) {
