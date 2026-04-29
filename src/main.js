@@ -11,9 +11,14 @@ import { VideoModal } from './ui/VideoModal.js';
 import { EquipmentModal } from './ui/EquipmentModal.js';
 import { DestinationPicker } from './ui/DestinationPicker.js';
 import { BGMPlayer } from './ui/BGMPlayer.js';
+import { Diagnostics } from './ui/Diagnostics.js';
 import { characters, destinations, equipment } from './data.js';
 
 const BGM_URL = 'assets/audio/bgm.ogg';
+const IS_DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
+
+// 早实例化，确保后续模块的 console / 报错都被捕获
+if (IS_DEBUG) new Diagnostics();
 
 // ====== DOM ======
 const loadingScreen = document.getElementById('loading-screen');

@@ -17,6 +17,7 @@ async function loadPanorama(url) {
       (tex) => {
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.mapping = THREE.EquirectangularReflectionMapping;
+        console.info(`[Panorama] OK  ${url}`);
         resolve(tex);
       },
       undefined,
@@ -201,6 +202,7 @@ function makeTreeMarkerSprite() {
 /** 创建 NPC 人像 sprite：优先从角色视频抽帧并去白底 */
 async function makeNPCSprite(character) {
   if (IS_FILE_PROTOCOL) {
+    console.warn(`[NPC] ${character.id} ${character.name} → file:// 占位（无法抽帧）`);
     const offlineSprite = makeNPCFallbackSprite(character);
     offlineSprite.userData.aspect = 0.74;
     return offlineSprite;
@@ -214,19 +216,22 @@ async function makeNPCSprite(character) {
         if (portraitCanvas) {
           const sprite = makeSpriteFromCanvas(portraitCanvas);
           sprite.userData.aspect = portraitCanvas.width / portraitCanvas.height;
+          console.info(`[NPC] ${character.id} ${character.name} OK`);
           return sprite;
         }
       } catch (err) {
-        console.warn('[Portrait] 抠像失败，自动回退原始帧：', err);
+        console.warn(`[NPC] ${character.id} 抠像失败，回退原始帧：`, err);
       }
 
       const frameSprite = makeSpriteFromCanvas(frameCanvas);
       frameSprite.userData.aspect = frameCanvas.width / frameCanvas.height;
+      console.info(`[NPC] ${character.id} ${character.name} OK（原始帧）`);
       return frameSprite;
     }
+    console.warn(`[NPC] ${character.id} ${character.name} → 抽帧失败，使用占位卡`);
   }
 
-  // 回退：不再显示“姓氏单字”，而是无文字的中性人物牌。
+  // 回退：不再显示"姓氏单字"，而是无文字的中性人物牌。
   const fallbackSprite = makeNPCFallbackSprite(character);
   fallbackSprite.userData.aspect = 0.74;
   return fallbackSprite;
