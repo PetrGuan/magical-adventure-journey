@@ -99,13 +99,18 @@ magical-adventure-journey/
 **macOS：** 双击 `start.command`
 **Windows：** 双击 `start.bat`
 
+如果电脑没有 Python，也不用安装：
+
+- Windows 双击 `start.bat` 会自动切换到 **PowerShell 内置 HTTP 服务器**（完整模式）
+- `run-offline.html` 仅用于应急离线展示（简化画面，不建议课堂正式使用）
+
 脚本会启动一个本地 HTTP 服务器（占用端口 8000），并自动打开浏览器。
 建议 Chrome 或 Edge，按 F11 全屏体验。
 
 ⚠️ **macOS 首次运行**可能提示"无法打开"——
 右键 `start.command` → 打开 → 在弹窗确认即可（之后双击就能用）。
 
-⚠️ **依赖**：Python 3（macOS / Win 11 自带；如果没有，去 [python.org](https://www.python.org/downloads/) 下载）。
+⚠️ **依赖说明**：优先使用本地 HTTP 服务器模式（画面完整、稳定）。Windows 无 Python 时会自动使用 PowerShell 内置服务器。
 
 ## 协议
 

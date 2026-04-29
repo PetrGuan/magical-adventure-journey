@@ -3,10 +3,10 @@ import * as THREE from 'three';
 /**
  * HotspotManager —— 用 raycaster 检测鼠标点击/悬停在 3D 场景里的可交互物体。
  *
- * 注册：registerNPC(mesh, npc) / registerFrame(mesh, frame)
+ * 注册：register(mesh, type, data)
  * 回调：onClick(type, data), onHover(type, data | null)
- *   - type: 'npc' | 'frame'
- *   - data: 注册时传入的对象（含 character/destination 等数据）
+ *   - type: 'npc' | 'tent' | 'tree' | ……
+ *   - data: 注册时传入的对象（含 character / equipment / destinations 等）
  */
 export class HotspotManager {
   constructor(camera, canvas) {
@@ -25,13 +25,8 @@ export class HotspotManager {
     this._setupListeners();
   }
 
-  registerNPC(mesh, npcData) {
-    mesh.userData.hotspot = { type: 'npc', data: npcData };
-    this.hotspotMeshes.push(mesh);
-  }
-
-  registerFrame(mesh, frameData) {
-    mesh.userData.hotspot = { type: 'frame', data: frameData };
+  register(mesh, type, data) {
+    mesh.userData.hotspot = { type, data };
     this.hotspotMeshes.push(mesh);
   }
 

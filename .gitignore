@@ -4,3 +4,6 @@ node_modules/
 dist/
 .vscode/
 .idea/
+
+# 老师傻瓜包打包出的离线 zip（每个 ~28 MB，不入版本库）
+神奇的探险之旅-*.zip

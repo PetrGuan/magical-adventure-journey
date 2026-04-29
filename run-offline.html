@@ -3,22 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>神奇的探险之旅</title>
-
+  <title>神奇的探险之旅（离线启动）</title>
   <link rel="stylesheet" href="src/ui/styles.css">
-
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "./vendor/three.module.js"
-      }
-    }
-  </script>
 </head>
 <body>
   <div id="app">
 
-    <!-- 加载页 / 进入界面 -->
     <div id="loading-screen" class="screen">
       <div class="title-block">
         <h1 class="title">神奇的探险之旅</h1>
@@ -33,14 +23,12 @@
       <button id="enter-button" class="enter-button" disabled>进入营地</button>
 
       <div class="footer-hint">
-        建议使用 Chrome / Edge 浏览器，全屏体验更佳（按 F11）
+        简化离线模式（完整画面请双击 start.bat 或 start.command）
       </div>
     </div>
 
-    <!-- 3D 画布 -->
     <canvas id="canvas"></canvas>
 
-    <!-- HUD（玩家进入后显示） -->
     <div id="hud" class="hud hidden">
       <div class="hud-hint">
         <span class="hud-key">🖱️ 拖动鼠标</span> 转视角看四周 &nbsp;·&nbsp;
@@ -50,20 +38,6 @@
 
   </div>
 
-  <script>
-    (function bootstrapApp() {
-      var script = document.createElement('script');
-
-      // 双击本地 index.html 时，使用已打包的离线 bundle，避免 file:// 下 ESM/CORS 限制。
-      if (window.location.protocol === 'file:') {
-        script.src = 'dist/bundle.js';
-      } else {
-        script.type = 'module';
-        script.src = 'src/main.js';
-      }
-
-      document.body.appendChild(script);
-    })();
-  </script>
+  <script src="dist/bundle.js"></script>
 </body>
 </html>
