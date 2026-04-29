@@ -607,3 +607,93 @@ canvas:active { cursor: grabbing; }
   color: #f5e9d4;
   transform: rotate(90deg);
 }
+
+/* ========== 调试日志面板 (?debug=1) ========== */
+.diag-panel {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  width: min(540px, 90vw);
+  max-height: 45vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 8, 12, 0.92);
+  border: 1px solid #4a5568;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-family: 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 11px;
+  z-index: 9999;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+.diag-panel.diag-collapsed .diag-log { display: none; }
+.diag-panel.diag-collapsed { max-height: none; }
+
+.diag-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #2d3748;
+  background: rgba(20, 20, 28, 0.8);
+  border-radius: 8px 8px 0 0;
+}
+.diag-title {
+  flex: 1;
+  font-weight: 700;
+  color: #ffd89a;
+  font-size: 12px;
+  letter-spacing: 0.05rem;
+}
+.diag-copy, .diag-min {
+  background: rgba(255, 220, 150, 0.15);
+  border: 1px solid #4a5568;
+  color: #ffd89a;
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+.diag-copy:hover, .diag-min:hover {
+  background: rgba(255, 220, 150, 0.3);
+}
+
+.diag-log {
+  overflow-y: auto;
+  padding: 0.4rem 0.6rem;
+  line-height: 1.5;
+  flex: 1;
+}
+.diag-line {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.4rem;
+  word-break: break-all;
+  white-space: pre-wrap;
+  margin-bottom: 0.15rem;
+  border-bottom: 1px solid rgba(45, 55, 72, 0.4);
+  padding-bottom: 0.15rem;
+}
+.diag-time { color: #718096; font-size: 10px; }
+.diag-level {
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.03rem;
+}
+.diag-text { color: #e2e8f0; }
+
+.diag-info  .diag-level { color: #63b3ed; }
+.diag-log   .diag-level { color: #a0aec0; }
+.diag-warn  .diag-level { color: #f6ad55; }
+.diag-warn  .diag-text  { color: #fbd38d; }
+.diag-error .diag-level,
+.diag-page_error .diag-level,
+.diag-asset_fail .diag-level,
+.diag-unhandled  .diag-level { color: #fc8181; }
+.diag-error .diag-text,
+.diag-page_error .diag-text,
+.diag-asset_fail .diag-text,
+.diag-unhandled  .diag-text  { color: #feb2b2; }
