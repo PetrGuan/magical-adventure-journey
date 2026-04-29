@@ -1,15 +1,14 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /**
  * 全景大本营场景。
  * 学生站在球心，背景是 360° 全景图（来自 AI 生成的真实感图像）。
- * 6 个 NPC（sprite / 视频 / 3D 模型）+ 5 个目的地画框漂浮在球内空间。
+ * 6 个 NPC sprite 漂浮在球内空间。点击 NPC 弹出对话框（带视频）。
  * 学生只能转视角，不能移动。
  */
 
-const PANORAMA_URL = 'assets/skybox/base-camp.webp';
-const gltfLoader = new GLTFLoader();
+const PANORAMA_URL = 'assets/skybox/Weixin%20Image_20260428014523_165_76.jpg';
+const IS_FILE_PROTOCOL = typeof window !== 'undefined' && window.location.protocol === 'file:';
 
 async function loadPanorama(url) {
   return new Promise((resolve) => {
@@ -30,15 +29,16 @@ async function loadPanorama(url) {
 }
 
 /**
- * @returns {{ npcs, frames }}
+ * @returns {{ npcs, tent, tree }}
  */
 export async function buildPlaceholderCamp(scene, characters, destinations) {
   // ====== 全景背景 ======
-  const panoTex = await loadPanorama(PANORAMA_URL);
+  const panoTex = IS_FILE_PROTOCOL ? null : await loadPanorama(PANORAMA_URL);
   if (panoTex) {
     scene.background = panoTex;
     scene.environment = panoTex;
   } else {
+    // file:// 离线打开时，避免加载外部图片纹理触发浏览器跨域安全限制。
     scene.background = new THREE.Color(0xfdc080);
   }
 
@@ -56,74 +56,66 @@ export async function buildPlaceholderCamp(scene, characters, destinations) {
   titleSprite.scale.set(8, 1.6, 1);
   scene.add(titleSprite);
 
-  // 目的地不再以画框形式出现在场景里——
-  // 改为点击 NPC 后从对话框选择（见 src/ui/Subtitle.js）
-  const frames = [];
+  // ====== 帐篷热点（陈老师与王叔叔之间，地面位置）======
+  // 王叔叔(A1) 在角度 +π/6 (≈30°)，陈老师(A2) 在角度 0°，
+  // 帐篷位于二人之间偏前的地面上：角度 π/12 (≈15°)，r=5。
+  const tentAngle = Math.PI / 12;
+  const tentR = 5;
+  const tentX = Math.sin(tentAngle) * tentR;
+  const tentZ = -Math.cos(tentAngle) * tentR;
+  const tentSprite = makeTentMarkerSprite();
+  tentSprite.scale.set(1.4, 1.575, 1);
+  tentSprite.position.set(tentX, 2.0, tentZ);
+  tentSprite.userData.kind = 'tent';
+  scene.add(tentSprite);
 
-  // ====== 6 位 NPC（左右两侧半圆排开）======
+  // ====== 远方一棵树（左前方）热点 ======
+  // 角度 -π/3 (≈-60°)，r=8，让树位于 A 组左外侧远处。
+  const treeAngle = -Math.PI / 3;
+  const treeR = 8;
+  const treeX = Math.sin(treeAngle) * treeR;
+  const treeZ = -Math.cos(treeAngle) * treeR;
+  const treeSprite = makeTreeMarkerSprite();
+  treeSprite.scale.set(1.6, 1.8, 1);
+  treeSprite.position.set(treeX, 2.4, treeZ);
+  treeSprite.userData.kind = 'tree';
+  scene.add(treeSprite);
+
+  // ====== 6 位 NPC（位置由 character.position 直接给出）======
+  // 这些坐标是 2026-04-29 用 LayoutEditor 拖拽确定的，写在 src/data.js 里。
+  const SPRITE_HEIGHT = 2.2;     // sprite 总高度
+  const HIT_HEIGHT    = 2.2;     // 点击靶柱高度
+  const HALO_OFFSET_Y = 1.45;    // 头顶光环相对 sprite 中心的 Y 偏移
+
   const npcs = [];
   await Promise.all(characters.map(async (character, i) => {
-    const isLeft = i < 3;
-    const localIdx = i % 3;
-    const angleOffset = isLeft ? -1 : 1;
-    // 6 位 NPC 整体往右拨：B 列累计右移 40°，A 列累计右移 60°
-    // 原始角度：A 列 -30°/-60°/-90°，B 列 +30°/+60°/+90°
-    const SHIFT_A = Math.PI / 3;        // A 列累计右移 60°
-    const SHIFT_B = Math.PI / 9 * 2;    // B 列累计右移 40°
-    let angle = angleOffset * (Math.PI / 6 + (localIdx / 2) * (Math.PI / 3));
-    angle += isLeft ? SHIFT_A : SHIFT_B;
+    const { x, y, z } = character.position;
 
-    const r = 6;
-    const x = Math.sin(angle) * r;
-    const z = -Math.cos(angle) * r;
-
-    // ----- 视觉表现：3D 模型 / 静态画布头像 -----
-    // 注意：character.video 字段是给【对话框头像】用的（点 NPC 后才播放），
-    // 这里 3D 场景里只用静态头像 sprite——避免 6 个视频在场景里同时循环（"假"）。
-    let visualObject;
-    let mixer = null;
-
-    if (character.model) {
-      // 3D 模型 + idle 动画
-      const result = await makeNPCModel(character);
-      visualObject = result.model;
-      mixer = result.mixer;
-      visualObject.position.set(x, 0, z);
-      visualObject.lookAt(0, visualObject.position.y, 0);
-    } else {
-      visualObject = makeNPCSprite(character);
-      visualObject.position.set(x, 1.6, z);
-      visualObject.scale.set(1.5, 1.8, 1);
-    }
+    // ----- 视觉表现：从视频抽帧，做去白底人像 -----
+    const visualObject = await makeNPCSprite(character);
+    const spriteAspect = visualObject.userData?.aspect || 0.74;
+    const spriteWidth = SPRITE_HEIGHT * spriteAspect;
+    visualObject.position.set(x, y, z);
+    visualObject.scale.set(spriteWidth, SPRITE_HEIGHT, 1);
     scene.add(visualObject);
 
     // ----- 透明点击靶（统一 raycast，不管视觉是 sprite 还是 GLB 嵌套）-----
     const clickTarget = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.7, 0.7, 1.8, 8),
+      new THREE.CylinderGeometry(0.65, 0.65, HIT_HEIGHT, 8),
       new THREE.MeshBasicMaterial({ visible: false }),
     );
-    clickTarget.position.set(x, 0.9, z);
+    clickTarget.position.set(x, y, z);
     scene.add(clickTarget);
 
     // ----- 头顶光环 -----
     const halo = makeHaloSprite();
-    halo.position.set(x, 2.5, z);
+    halo.position.set(x, y + HALO_OFFSET_Y, z);
     halo.scale.set(1.0, 1.0, 1);
     halo.visible = false;
     scene.add(halo);
 
-    // ----- 3D 模型角色加名字小牌（model 本身没有名字文字）-----
-    // canvas sprite 头像本身已含名字，不需要额外牌子
-    if (character.model) {
-      const namePlate = makeNamePlateSprite(character);
-      namePlate.position.set(x, 0.2, z);
-      namePlate.scale.set(1.6, 0.4, 1);
-      scene.add(namePlate);
-    }
-
     npcs[i] = {
       visualObject,
-      mixer,
       clickTarget,
       halo,
       character,
@@ -133,200 +125,365 @@ export async function buildPlaceholderCamp(scene, characters, destinations) {
     };
   }));
 
-  return { npcs, frames };
+  return { npcs, tent: tentSprite, tree: treeSprite };
 }
 
-/** 创建 NPC 圆形头像 sprite（含名字标签）*/
-function makeNPCSprite(character) {
+/**
+ * 「可点击」提示标记 —— 通用 POI 标识：金光环 + 中心 emoji + 文字标签。
+ * 全景图本身已含真实帐篷与树木，标记只负责告诉学生「这里可以点」。
+ */
+function makePoiMarkerSprite(emoji, label) {
+  const W = 320;
+  const H = 360;
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 320;
+  canvas.width = W;
+  canvas.height = H;
   const ctx = canvas.getContext('2d');
 
-  const cx = 128, cy = 128, radius = 100;
+  const cx = W / 2;
+  const cy = 132;
+  const ringR = 60;
 
-  // 外圈光晕
-  const grad = ctx.createRadialGradient(cx, cy, radius * 0.4, cx, cy, radius);
-  const colorHex = '#' + character.color.toString(16).padStart(6, '0');
-  grad.addColorStop(0, lightenColor(colorHex, 0.4));
-  grad.addColorStop(1, colorHex);
-  ctx.fillStyle = grad;
+  // 外发光晕
+  const glow = ctx.createRadialGradient(cx, cy, ringR * 0.4, cx, cy, ringR * 2.2);
+  glow.addColorStop(0, 'rgba(255, 220, 150, 0.55)');
+  glow.addColorStop(0.5, 'rgba(255, 200, 110, 0.22)');
+  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // 圆形玻璃底盘
   ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(20, 12, 6, 0.55)';
   ctx.fill();
-
-  // 金色描边
-  ctx.strokeStyle = '#ffd89a';
   ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius - 3, 0, Math.PI * 2);
+  ctx.strokeStyle = '#ffd89a';
+  ctx.shadowColor = 'rgba(255, 200, 100, 0.85)';
+  ctx.shadowBlur = 18;
   ctx.stroke();
+  ctx.shadowBlur = 0;
 
-  // 圆心：名字第一个字
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '900 96px "Noto Serif SC", "PingFang SC", serif';
+  // 中心 emoji
+  ctx.font = '64px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-  ctx.shadowBlur = 8;
-  ctx.fillText(character.name.charAt(0), cx, cy + 8);
+  ctx.fillText(emoji, cx, cy + 4);
 
-  // 圆下方：完整名字
+  // 文字标签
+  ctx.fillStyle = '#fff7df';
+  ctx.font = '700 28px "Noto Serif SC", "PingFang SC", serif';
   ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
   ctx.shadowBlur = 10;
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '700 30px "Noto Sans SC", sans-serif';
-  ctx.fillText(character.name, cx, 268);
+  ctx.fillText(label, cx, cy + ringR + 38);
+  ctx.shadowBlur = 0;
 
-  // 角色身份小字
-  ctx.font = '500 18px "Noto Sans SC", sans-serif';
-  ctx.fillStyle = '#ffd89a';
-  ctx.fillText(character.role, cx, 300);
-
-  return makeSpriteFromCanvas(canvas);
-}
-
-/**
- * 视频版 NPC sprite — 用 VideoTexture 替代 canvas。
- * 视频静音循环自动播放（浏览器策略要求 muted 才能 autoplay）。
- */
-async function makeNPCVideoSprite(character) {
-  const video = document.createElement('video');
-  video.src = character.video;
-  video.loop = true;
-  video.muted = true;
-  video.playsInline = true;
-  video.autoplay = true;
-  video.crossOrigin = 'anonymous';
-
-  // 等视频元数据 + 第一帧加载（最多等 3 秒，避免卡死场景初始化）
-  await new Promise((resolve) => {
-    if (video.readyState >= 2) return resolve();
-    video.addEventListener('loadeddata', resolve, { once: true });
-    video.addEventListener('error', resolve, { once: true });
-    setTimeout(resolve, 3000);
-  });
-
-  // 触发播放（即使等待超时也尝试）
-  video.play().catch(() => {});
-
-  const texture = new THREE.VideoTexture(video);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    fog: false,
-    depthWrite: false,
-  });
-
-  const sprite = new THREE.Sprite(material);
-  // 把 video element 挂在 sprite 上，方便后续控制（暂停/继续）
-  sprite.userData.video = video;
-  return sprite;
-}
-
-/**
- * 3D 模型版 NPC — 加载 GLB，自动播放 idle 动画。
- * 返回 { model, mixer }，main.js 每帧调 mixer.update(delta)。
- */
-async function makeNPCModel(character) {
-  const gltf = await gltfLoader.loadAsync(character.model);
-  const model = gltf.scene;
-
-  // 启用阴影（如果以后加灯光阴影会用到）
-  model.traverse((node) => {
-    if (node.isMesh) {
-      node.castShadow = true;
-      node.receiveShadow = false;
-    }
-  });
-
-  let mixer = null;
-  if (gltf.animations && gltf.animations.length > 0) {
-    mixer = new THREE.AnimationMixer(model);
-    // 优先 idle，找不到就用第一个动画
-    const idleClip =
-      gltf.animations.find((c) => /idle/i.test(c.name)) ||
-      gltf.animations[0];
-    mixer.clipAction(idleClip).play();
-  }
-
-  return { model, mixer };
-}
-
-/** 视频角色下方的名字小牌（视频里看不出谁是谁）*/
-function makeNamePlateSprite(character) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 480;
-  canvas.height = 120;
-  const ctx = canvas.getContext('2d');
-
-  // 半透明深色底
-  ctx.fillStyle = 'rgba(20, 12, 8, 0.85)';
+  // 提示小三角（指向下方真实物体）
   ctx.beginPath();
-  ctx.roundRect(0, 10, canvas.width, canvas.height - 20, 18);
+  ctx.moveTo(cx - 10, cy + ringR + 6);
+  ctx.lineTo(cx + 10, cy + ringR + 6);
+  ctx.lineTo(cx, cy + ringR + 18);
+  ctx.closePath();
+  ctx.fillStyle = '#ffd89a';
   ctx.fill();
 
-  // 金色描边
-  ctx.strokeStyle = '#c4a878';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.roundRect(2, 12, canvas.width - 4, canvas.height - 24, 16);
-  ctx.stroke();
-
-  // 名字
-  ctx.fillStyle = '#ffd89a';
-  ctx.font = '700 38px "Noto Serif SC", "PingFang SC", serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(character.name, canvas.width / 2, canvas.height / 2 - 6);
-
-  // 角色身份小字
-  ctx.fillStyle = '#c4a878';
-  ctx.font = '500 18px "Noto Sans SC", sans-serif';
-  ctx.fillText(character.role, canvas.width / 2, canvas.height / 2 + 26);
-
   return makeSpriteFromCanvas(canvas);
 }
 
-/** 目的地画框 sprite */
-function makeFrameSprite(destination) {
+function makeTentMarkerSprite() {
+  return makePoiMarkerSprite('🏕️', '帐篷');
+}
+
+function makeTreeMarkerSprite() {
+  return makePoiMarkerSprite('🧭', '去哪儿探险？');
+}
+
+/** 创建 NPC 人像 sprite：优先从角色视频抽帧并去白底 */
+async function makeNPCSprite(character) {
+  if (IS_FILE_PROTOCOL) {
+    const offlineSprite = makeNPCFallbackSprite(character);
+    offlineSprite.userData.aspect = 0.74;
+    return offlineSprite;
+  }
+
+  if (character.video) {
+    const frameCanvas = await captureVideoFrameCanvas(character.video);
+    if (frameCanvas) {
+      try {
+        const portraitCanvas = createWhiteKeyPortraitCanvas(frameCanvas);
+        if (portraitCanvas) {
+          const sprite = makeSpriteFromCanvas(portraitCanvas);
+          sprite.userData.aspect = portraitCanvas.width / portraitCanvas.height;
+          return sprite;
+        }
+      } catch (err) {
+        console.warn('[Portrait] 抠像失败，自动回退原始帧：', err);
+      }
+
+      const frameSprite = makeSpriteFromCanvas(frameCanvas);
+      frameSprite.userData.aspect = frameCanvas.width / frameCanvas.height;
+      return frameSprite;
+    }
+  }
+
+  // 回退：不再显示“姓氏单字”，而是无文字的中性人物牌。
+  const fallbackSprite = makeNPCFallbackSprite(character);
+  fallbackSprite.userData.aspect = 0.74;
+  return fallbackSprite;
+}
+
+/** 从角色视频抓取一帧（用于场景静态人像） */
+function captureVideoFrameCanvas(url) {
+  if (!url) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+
+    let settled = false;
+
+    const cleanup = () => {
+      try {
+        video.pause();
+      } catch (_) {}
+      video.removeAttribute('src');
+      video.load();
+    };
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+
+    const fail = (reason) => {
+      console.warn(`[Portrait] 视频抽帧失败 ${url}:`, reason);
+      finish(null);
+    };
+
+    const capture = () => {
+      try {
+        const srcW = video.videoWidth;
+        const srcH = video.videoHeight;
+        if (!srcW || !srcH) {
+          fail('无效视频尺寸');
+          return;
+        }
+
+        const maxHeight = 720;
+        const scale = Math.min(1, maxHeight / srcH);
+        const width = Math.max(1, Math.round(srcW * scale));
+        const height = Math.max(1, Math.round(srcH * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) {
+          fail('无法创建 2D canvas');
+          return;
+        }
+
+        ctx.drawImage(video, 0, 0, width, height);
+        finish(canvas);
+      } catch (err) {
+        fail(err);
+      }
+    };
+
+    video.addEventListener('error', () => {
+      fail(video.error || 'video load error');
+    }, { once: true });
+
+    video.addEventListener('loadedmetadata', () => {
+      const seekTime = Number.isFinite(video.duration) && video.duration > 0.35 ? 0.3 : 0;
+      if (seekTime > 0) {
+        video.addEventListener('seeked', capture, { once: true });
+        try {
+          video.currentTime = seekTime;
+        } catch (_) {
+          if (video.readyState >= 2) capture();
+          else video.addEventListener('loadeddata', capture, { once: true });
+        }
+      } else if (video.readyState >= 2) {
+        capture();
+      } else {
+        video.addEventListener('loadeddata', capture, { once: true });
+      }
+    }, { once: true });
+
+    video.src = url;
+    video.load();
+  });
+}
+
+/** 近白色抠像：把视频白底转为透明，并裁掉多余空白 */
+function createWhiteKeyPortraitCanvas(sourceCanvas) {
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  if (!width || !height) return null;
+
+  // 清理视频左上角常见的 "AI 生成" 水印区域（做羽化避免硬边）。
+  const watermarkWidth = Math.max(40, Math.round(width * 0.2));
+  const watermarkHeight = Math.max(28, Math.round(height * 0.1));
+  const watermarkFeather = Math.max(8, Math.round(Math.min(width, height) * 0.015));
+
+  const workCanvas = document.createElement('canvas');
+  workCanvas.width = width;
+  workCanvas.height = height;
+  const workCtx = workCanvas.getContext('2d', { willReadFrequently: true });
+  if (!workCtx) return null;
+
+  workCtx.drawImage(sourceCanvas, 0, 0, width, height);
+  let imageData;
+  try {
+    imageData = workCtx.getImageData(0, 0, width, height);
+  } catch (err) {
+    // 某些环境（尤其 file://）会触发 tainted canvas，返回 null 走上层回退。
+    console.warn('[Portrait] 无法读取像素数据，跳过抠像：', err);
+    return null;
+  }
+  const data = imageData.data;
+
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const pixelIndex = i / 4;
+    const px = pixelIndex % width;
+    const py = Math.floor(pixelIndex / width);
+
+    const maxRGB = Math.max(r, g, b);
+    const minRGB = Math.min(r, g, b);
+    const saturation = maxRGB === 0 ? 0 : (maxRGB - minRGB) / maxRGB;
+
+    const keepByBrightness = clamp01((228 - minRGB) / 45);
+    const keepBySaturation = clamp01((saturation - 0.07) / 0.2);
+    const skinHint = r > 95 && g > 40 && b > 20 && r > b + 15;
+
+    let alpha = Math.max(keepByBrightness, keepBySaturation);
+    if (skinHint) alpha = Math.max(alpha, 0.75);
+
+    alpha = Math.pow(alpha, 0.9);
+    let alphaByte = Math.round(alpha * 255);
+
+    if (px < watermarkWidth && py < watermarkHeight) {
+      const edgeX = (watermarkWidth - px) / watermarkFeather;
+      const edgeY = (watermarkHeight - py) / watermarkFeather;
+      const cutStrength = clamp01(Math.min(edgeX, edgeY));
+      alphaByte = Math.round(alphaByte * (1 - cutStrength));
+    }
+
+    data[i + 3] = alphaByte;
+
+    if (alphaByte > 22) {
+      if (px < minX) minX = px;
+      if (px > maxX) maxX = px;
+      if (py < minY) minY = py;
+      if (py > maxY) maxY = py;
+
+      // 消一点白边，减少头发边缘发灰发白。
+      if (alphaByte < 230) {
+        const edgeMix = (255 - alphaByte) / 255;
+        const darken = 1 - edgeMix * 0.25;
+        data[i] = Math.round(r * darken);
+        data[i + 1] = Math.round(g * darken);
+        data[i + 2] = Math.round(b * darken);
+      }
+    }
+  }
+
+  workCtx.putImageData(imageData, 0, 0);
+
+  if (maxX < minX || maxY < minY) return null;
+
+  const padX = Math.round(width * 0.035);
+  const padTop = Math.round(height * 0.04);
+  const padBottom = Math.round(height * 0.02);
+
+  const cropX = Math.max(0, minX - padX);
+  const cropY = Math.max(0, minY - padTop);
+  const cropW = Math.min(width - cropX, (maxX - minX + 1) + padX * 2);
+  const cropH = Math.min(height - cropY, (maxY - minY + 1) + padTop + padBottom);
+
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = cropW;
+  outCanvas.height = cropH;
+  const outCtx = outCanvas.getContext('2d');
+  if (!outCtx) return null;
+
+  outCtx.drawImage(workCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+  return outCanvas;
+}
+
+/** 抠像失败时的保底牌（无姓氏文字） */
+function makeNPCFallbackSprite(character) {
   const canvas = document.createElement('canvas');
-  canvas.width = 384;
-  canvas.height = 296;
+  canvas.width = 320;
+  canvas.height = 440;
   const ctx = canvas.getContext('2d');
 
-  // 主体彩色背景
-  ctx.fillStyle = '#' + destination.color.toString(16).padStart(6, '0');
+  const colorHex = '#' + character.color.toString(16).padStart(6, '0');
+
+  // 柔和背光
+  const glow = ctx.createRadialGradient(160, 190, 40, 160, 190, 180);
+  glow.addColorStop(0, lightenColor(colorHex, 0.45));
+  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = glow;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // 暗化覆盖让文字更清晰
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // 人像底牌
+  ctx.fillStyle = 'rgba(30, 22, 16, 0.72)';
+  roundRect(ctx, 58, 78, 204, 306, 34);
+  ctx.fill();
+  ctx.strokeStyle = '#ffd89a';
+  ctx.lineWidth = 4;
+  ctx.stroke();
 
-  // 木框描边
-  ctx.strokeStyle = '#c4a878';
-  ctx.lineWidth = 8;
-  ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
+  // 头部
+  ctx.fillStyle = '#f2e8dc';
+  ctx.beginPath();
+  ctx.arc(160, 170, 56, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Emoji
-  ctx.font = '140px "Apple Color Emoji", "Segoe UI Emoji"';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(destination.emoji, canvas.width / 2, canvas.height / 2 - 25);
-
-  // 地名
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '700 38px "Noto Serif SC", "PingFang SC", serif';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-  ctx.shadowBlur = 6;
-  ctx.fillText(destination.name, canvas.width / 2, canvas.height - 50);
+  // 肩部
+  ctx.beginPath();
+  ctx.moveTo(90, 336);
+  ctx.quadraticCurveTo(160, 232, 230, 336);
+  ctx.lineTo(230, 358);
+  ctx.lineTo(90, 358);
+  ctx.closePath();
+  ctx.fill();
 
   return makeSpriteFromCanvas(canvas);
 }
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
 
 /** 顶部标题（金色横匾感）*/
 function makeTitleSprite(text) {

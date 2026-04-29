@@ -29,8 +29,7 @@ if %errorlevel%==0 (
     python3 -m http.server %PORT%
   ) else (
     echo.
-    echo [错误] 未找到 Python。请先安装 Python 3：
-    echo        https://www.python.org/downloads/
-    pause
+    echo [提示] 未找到 Python，自动切换到 PowerShell 内置服务器（无需安装）
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$port=%PORT%; $root=(Get-Location).Path; $listener=[System.Net.HttpListener]::new(); $listener.Prefixes.Add(('http://localhost:{0}/' -f $port)); $listener.Start(); Write-Host ('Serving ' + $root + ' at http://localhost:' + $port); while($listener.IsListening){ $ctx=$listener.GetContext(); $rel=[Uri]::UnescapeDataString($ctx.Request.Url.AbsolutePath.TrimStart('/')); if([string]::IsNullOrWhiteSpace($rel)){ $rel='index.html' }; $file=Join-Path $root $rel; if((Test-Path $file) -and -not (Get-Item $file).PSIsContainer){ $bytes=[System.IO.File]::ReadAllBytes($file); $ext=[System.IO.Path]::GetExtension($file).ToLowerInvariant(); $mime=switch($ext){ '.html'{'text/html; charset=utf-8'} '.js'{'application/javascript; charset=utf-8'} '.css'{'text/css; charset=utf-8'} '.json'{'application/json; charset=utf-8'} '.jpg'{'image/jpeg'} '.jpeg'{'image/jpeg'} '.png'{'image/png'} '.webp'{'image/webp'} '.svg'{'image/svg+xml'} '.mp4'{'video/mp4'} default{'application/octet-stream'} }; $ctx.Response.ContentType=$mime; $ctx.Response.ContentLength64=$bytes.Length; $ctx.Response.OutputStream.Write($bytes,0,$bytes.Length) } else { $ctx.Response.StatusCode=404 }; $ctx.Response.OutputStream.Close() }"
   )
 )

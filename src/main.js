@@ -8,7 +8,9 @@ import {
 import { HotspotManager } from './core/HotspotManager.js';
 import { Subtitle } from './ui/Subtitle.js';
 import { VideoModal } from './ui/VideoModal.js';
-import { characters, destinations } from './data.js';
+import { EquipmentModal } from './ui/EquipmentModal.js';
+import { DestinationPicker } from './ui/DestinationPicker.js';
+import { characters, destinations, equipment } from './data.js';
 
 // ====== DOM ======
 const loadingScreen = document.getElementById('loading-screen');
@@ -18,7 +20,8 @@ const progressText  = document.querySelector('.progress-text');
 const hud           = document.getElementById('hud');
 const canvas        = document.getElementById('canvas');
 
-let engine, player, camp, hotspotManager, subtitle, videoModal;
+let engine, player, camp, hotspotManager;
+let subtitle, videoModal, equipmentModal, destinationPicker;
 
 async function init() {
   // ====== 启动引擎 ======
@@ -39,31 +42,38 @@ async function init() {
   // ====== 交互系统 ======
   hotspotManager = new HotspotManager(engine.camera, canvas);
 
+  // 6 位 NPC
   camp.npcs.forEach(npc => {
-    hotspotManager.registerNPC(npc.body, npc);
-    hotspotManager.registerNPC(npc.head, npc);
+    hotspotManager.register(npc.body, 'npc', npc);
+    hotspotManager.register(npc.head, 'npc', npc);
   });
-  // 目的地不再以画框形式存在场景中——但保留 hotspot 系统，未来或许有新用途
-  // (camp.frames 现在恒为 [])
+  // 帐篷 → 装备卡 / 远方树 → 目的地选择
+  hotspotManager.register(camp.tent, 'tent', null);
+  hotspotManager.register(camp.tree, 'tree', null);
 
-  subtitle = new Subtitle(destinations);
-  videoModal = new VideoModal();
+  // ====== UI 弹层 ======
+  subtitle          = new Subtitle();
+  videoModal        = new VideoModal();
+  equipmentModal    = new EquipmentModal(equipment);
+  destinationPicker = new DestinationPicker(destinations);
 
   subtitle.onHidden = () => {
     camp.npcs.forEach(n => { n.halo.visible = false; });
   };
 
-  // 对话框里点目的地按钮 → 播放该场景的视频
-  subtitle.onDestinationClick = (destination) => {
+  // 远方树点开后选目的地 → 关 picker，弹 VideoModal 播 mp4
+  destinationPicker.onPick = (destination) => {
+    destinationPicker.hide();
     videoModal.show(destination);
   };
 
   hotspotManager.onClick = (type, data) => {
-    if (type === 'npc') onNPCClick(data);
+    if (type === 'npc')  return onNPCClick(data);
+    if (type === 'tent') return onTentClick();
+    if (type === 'tree') return onTreeClick();
   };
 
   // 鼠标 hover 时鼠标已经会变 pointer，暂不做更精细高亮
-  // （sprite/视频/3D 模型混合，emissive 不通用，留待 polish 阶段）
   hotspotManager.onHover = () => {};
 
   // ====== 帧循环 ======
@@ -71,10 +81,6 @@ async function init() {
     player.update(delta);
     updatePlaceholderCamp(engine.scene, delta, elapsed);
     spinHalos(camp.npcs, elapsed);
-    // 3D 角色 idle 动画驱动
-    camp.npcs.forEach(n => {
-      if (n.mixer) n.mixer.update(delta);
-    });
   });
 
   // 渲染一帧给加载页背后
@@ -103,9 +109,17 @@ function onNPCClick(npc) {
   subtitle.show(npc.character);
 }
 
-function onFrameClick(frame) {
+function onTentClick() {
+  // 打开装备卡前先把其他卡片收掉，避免叠层
   if (subtitle.isVisible()) subtitle.hide();
-  videoModal.show(frame.destination);
+  if (destinationPicker.isVisible()) destinationPicker.hide();
+  equipmentModal.show();
+}
+
+function onTreeClick() {
+  if (subtitle.isVisible()) subtitle.hide();
+  if (equipmentModal.isVisible()) equipmentModal.hide();
+  destinationPicker.show();
 }
 
 function enterCamp() {

@@ -26,7 +26,8 @@ elif command -v python &> /dev/null; then
   python -m http.server $PORT
 else
   echo ""
-  echo "❌ 未找到 Python。请先安装 Python 3："
-  echo "   https://www.python.org/downloads/"
+  echo "⚠️ 未找到 Python，自动切换到离线模式（无需安装）"
+  open "run-offline.html"
+  echo "已打开离线入口：run-offline.html"
   read -p "按回车键退出……"
 fi
